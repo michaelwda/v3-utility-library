@@ -2247,7 +2247,8 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
         if (json.extent) {
           json.bounds = fromEnvelopeToLatLngBounds_(json.extent);
           //log_('got '+json.bounds.toUrlValue());
-          delete json.extent;
+            delete json.extent;
+            console.log('callback');
           callback(json); 
         } else {
           handleErr_(errback, json.error);  
@@ -3496,15 +3497,26 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
    * Handler when overlay is added. Interface method.
    * This will be called after setMap(map) is called.
    */
-  MapOverlay.prototype.onAdd = function() {
+    MapOverlay.prototype.onAdd = function () {
+        console.log('Added');
     var me = this;
-    this.listeners_.push(G.event.addListener(this.getMap(), 'bounds_changed', callback_(this.refresh, this)));
-    this.listeners_.push(G.event.addListener(this.getMap(), 'dragstart', function(){
-      me.dragging = true; 
+        this.listeners_.push(G.event.addListener(this.getMap(), 'bounds_changed', function () {
+            console.log('bounds');
+            me.drawing_ = false;
+            me.needsNewRefresh_ = true;
+            callback_(this.refresh, this);
+        }));
+        this.listeners_.push(G.event.addListener(this.getMap(), 'dragstart', function () {
+            me.drawing_ = false;
+            me.needsNewRefresh_ = true;
+            me.dragging = true; 
     }));
-    this.listeners_.push(G.event.addListener(this.getMap(), 'dragend', function(){
-      me.dragging = false; 
-    }));
+        this.listeners_.push(G.event.addListener(this.getMap(), 'dragend', function () {
+            me.drawing_ = false;
+            me.needsNewRefresh_ = true;
+        me.dragging = false; 
+     }));
+    
     var map = this.getMap();
     map.agsOverlays = map.agsOverlays || new G.MVCArray();
     map.agsOverlays.push(this);
@@ -3516,7 +3528,8 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
    * Called by API not by app code.
    * Handler when overlay is removed.
    */
-  MapOverlay.prototype.onRemove = function() {
+    MapOverlay.prototype.onRemove = function () {
+        console.log('Removed');
     for (var i = 0, j = this.listeners_.length; i < j; i++){
       G.event.removeListener(this.listeners_[i]);
     }
@@ -3542,11 +3555,13 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
    * Called by API not by app code.
    * See OverlayView.draw in core API docs.
    */
-  MapOverlay.prototype.draw = function () {
-    if (!this.drawing_ || this.needsNewRefresh_ === true) {
-      this.refresh(); 
-    }
-  };
+    MapOverlay.prototype.draw = function () {
+        console.log('draw');
+        if (!this.drawing_ || this.needsNewRefresh_ === true) {
+            this.refresh();            
+        }
+        console.log('end');
+    };
 
   MapOverlay.prototype['draw'] = MapOverlay.prototype.draw;
   /**
@@ -3577,9 +3592,12 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
   /**
    * Refresh the map image in current view port.
    */
-  MapOverlay.prototype.refresh = function () {
-    if (this.drawing_ === true) {
-      this.needsNewRefresh_ = true;
+    var timer;
+    MapOverlay.prototype.refresh = function () {
+
+     console.log('Refresh Proto');
+     if (this.drawing_ === true) {
+        this.needsNewRefresh_ = true;
       return;
     }
     var m = this.getMap();
@@ -3591,7 +3609,8 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
     params.bounds = bnds;
     var sr = WEB_MERCATOR;
     // V3 no map.getSize()
-    var s = m.getDiv();
+        var s = m.getDiv();
+  
     params.width = s.offsetWidth;
     params.height = s.offsetHeight;
     if (s.offsetWidth == 0 || s.offsetHeight ==0){
@@ -3607,37 +3626,63 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
      * @name MapOverlay#drawstart
      * @event
      */
-    triggerEvent_(this, 'drawstart');
+     triggerEvent_(this, 'drawstart');
     var me = this;
-    this.drawing_ = true;
-    if (!this.dragging && this.overlay_){
-      this.overlay_.setMap(null);
-      this.overlay_ = null;
-    }
-    //this.div_.style.backgroundImage = '';
+        this.drawing_ = true;
+        console.log(this.dragging);
+      if (!this.dragging && this.overlay_) {
+        console.log('clearing overlay?');
+          this.overlay_.setMap(null);
+          this.overlay_ = null;
     
-    this.mapService_.exportMap(params, function (json) {
-      me.drawing_ = false;
-      
-      if (me.needsNewRefresh_ === true) {
-        me.needsNewRefresh_ = false;
-        me.refresh();
+        }
+        if (this.dragging)
+            return;
+    //this.div_.style.backgroundImage = '';
+        
+        
+        this.mapService_.exportMap(params, function (json) {
+            console.log('1');
+        if (me.needsNewRefresh_ === true) {
+            console.log('calling refresh');
+            me.needsNewRefresh_ = false;
+            me.drawing_ = false;
+            me.refresh();
         return;
       }
       if (json.href) {
-        if (me.overlay_) {
-          me.overlay_.setMap(null);
-          me.overlay_ = null;
-        }
-       me.overlay_ = new ImageOverlay(json.bounds, json.href, me.map_, me.opacity_);
-       
+          if (me.overlay_) {
+              console.log('clear overlay2');
+               
+              console.log(me.overlay_.url_);
+              if (me.overlay_.url_ !== json.href)
+              {
+                  me.overlay_.url_ = json.href;
+                  me.overlay_.bounds_ = json.bounds;
+                  if (timer) {
+                      console.log('clear timer');
+                      clearTimeout(timer);
+                       
+                  }
+                  timer = setTimeout(function () { me.overlay_.draw(); }, 500);
+                  console.log(me.overlay_.url_);
+              }
+              
+              //me.overlay_.updateUrl(json.bounds,json.href);
+          } else {
+              console.log("Creating overlay");
+              me.overlay_ = new ImageOverlay(json.bounds, json.href, me.map_, me.opacity_);
+          }
+          
       }
       /**
        * This event is fired after the the drawing request was returned by server.
        * @name MapOverlay#drawend
        * @event
        */
-      triggerEvent_(me, 'drawend');
+            
+        //triggerEvent_(me.map_, 'drawend');
+        triggerEvent_(me, 'drawend');
     });
   };
   
@@ -3694,20 +3739,21 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
     this.map_ = map;
     this.div_ = null;
     this.op_ = op;
-    this.setMap(map);
+      this.setMap(map);
+
+     
   }
-  
+
+
+
   ImageOverlay.prototype = new G.OverlayView();
-  ImageOverlay.prototype.onAdd = function() {
+    ImageOverlay.prototype.onAdd = function () {
+    console.log('adding overlay');
     var div = document.createElement('DIV');
     div.style.border = "none";
     div.style.borderWidth = "0px";
     div.style.position = "absolute";
-    var s = this.map_.getDiv();
-    div.style.width = s.offsetWidth + 'px';
-    div.style.height =  s.offsetHeight + 'px';
     
-    div.style.backgroundImage = 'url(' + this.url_ + ')';
     
     // Set the overlay's div_ property to this DIV
     this.div_ = div;
@@ -3719,7 +3765,7 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
     panes.overlayLayer.appendChild(div);
   };
   ImageOverlay.prototype.draw = function() {
-  
+      console.log('drawing image overlay');
     // Size and position the overlay. We use a southwest and northeast
     // position of the overlay to peg it to the correct position and size.
     // We need to retrieve the projection from this overlay to do this.
@@ -3730,17 +3776,38 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
     // We'll use these coordinates to resize the DIV.
     var sw = overlayProjection.fromLatLngToDivPixel(this.bounds_.getSouthWest());
     var ne = overlayProjection.fromLatLngToDivPixel(this.bounds_.getNorthEast());
+
     
+
+      var div = this.div_;
+      var s = this.map_.getDiv();
+      if (div.style.width !== s.offsetWidth || div.style.height !== s.offsetHeight) {
+          console.log('setting width');
+          div.style.width = s.offsetWidth + 'px';
+          div.style.height = s.offsetHeight + 'px';
+      }
+      
+
+      div.style.backgroundImage = 'url(' + this.url_ + ')';
+
     // Resize the image's DIV to fit the indicated dimensions.
-    var div = this.div_;
-    div.style.left = sw.x + 'px';
-    div.style.top = ne.y + 'px';
+      if (div.style.left !== sw.x || div.style.top !== ne.y) {
+          div.style.left = sw.x + 'px';
+          div.style.top = ne.y + 'px';
+      }
+ 
     //div.style.width = (ne.x - sw.x) + 'px';
     //div.style.height = (sw.y - ne.y) + 'px';
+
+
   };
-  ImageOverlay.prototype.onRemove = function() {
-    this.div_.parentNode.removeChild(this.div_);
-    this.div_ = null;
+    ImageOverlay.prototype.onRemove = function () {
+        console.log('removing image overlay? why');
+        if (this.div_ != null) {
+            this.div_.parentNode.removeChild(this.div_);
+            this.div_ = null;
+        }
+    
   }
   /**
  * Creates a copyright control
@@ -3788,4 +3855,5 @@ Layer.prototype.queryRelatedRecords = function(qparams, callback, errback) {
     CopyrightControl:CopyrightControl
   };
 
-window.gmaps = gmaps; })()  
+    window.gmaps = gmaps;
+})()  
